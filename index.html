@@ -4,12 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Workout Tracker</title>
+    <!-- Load React first -->
     <script src="https://unpkg.com/react@17/umd/react.development.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Load other dependencies -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <!-- Load Recharts after React -->
+    <script src="https://unpkg.com/recharts@2.1.0/umd/Recharts.js" crossorigin></script>
+    <!-- Load Babel last -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
@@ -22,7 +26,7 @@
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubmdweGZjZHV6eGpqYXhwbnlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzUzMzU5NDIsImV4cCI6MjA1MDkxMTk0Mn0.XmCti5gFOjcDvlyMt6_r-_XwYZU-LgdeV2UX4gfB2PU'
         );
 
-        const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
+        const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = window.Recharts;
 
         const workoutPlans = {
             'Day 1: Quad-Dominant Leg Day': [
