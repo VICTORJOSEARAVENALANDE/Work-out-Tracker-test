@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Workout Tracker</title>
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/react@17/umd/react.development.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -16,6 +16,7 @@
     <div id="root"></div>
     
     <script type="text/babel">
+        // Initialize Supabase
         const supabase = supabase.createClient(
             'https://tnngpxfcduzxjjaxpnys.supabase.com',
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubmdweGZjZHV6eGpqYXhwbnlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzUzMzU5NDIsImV4cCI6MjA1MDkxMTk0Mn0.XmCti5gFOjcDvlyMt6_r-_XwYZU-LgdeV2UX4gfB2PU'
@@ -88,6 +89,17 @@
                 loadAllWorkoutDates();
             }, [selectedDate]);
 
+            async function loadWorkoutData() {
+                const { data, error } = await supabase
+                    .from('workout_logs')
+                    .select('*')
+                    .eq('date', selectedDate)
+                    .single();
+                if (data) {
+                    setWorkoutLogs({ [selectedDate]: data.logs });
+                }
+            }
+
             async function loadBodyWeight() {
                 const { data, error } = await supabase
                     .from('body_weight_logs')
@@ -128,7 +140,220 @@
                 }
             }
 
-            // ... [Previous functions remain the same: loadWorkoutData, saveWorkoutData, etc.]
+            async function loadAllWorkoutDates() {
+                const { data, error } = await supabase
+                    .from('workout_logs')
+                    .select('date, logs');
+                
+                if (data) {
+                    const dates = data.map(entry => ({
+                        date: entry.date,
+                        isRestDay: entry.logs && Object.keys(entry.logs).some(day => day.includes('Rest'))
+                    }));
+                    setWorkoutDates(dates);
+                }
+            }
+
+            async function loadPersonalRecords() {
+                const { data, error } = await supabase
+                    .from('personal_records')
+                    .select('*');
+
+                if (data) {
+                    const prsByExercise = {};
+                    data.forEach(pr => {
+                        prsByExercise[pr.exercise] = pr;
+                    });
+                    setPersonalRecords(prsByExercise);
+                }
+            }
+
+            async function loadExerciseHistory(exercise) {
+                const { data, error } = await supabase
+                    .from('workout_logs')
+                    .select('date, logs')
+                    .order('date', { ascending: true });
+
+                if (data) {
+                    const history = data
+                        .filter(entry => entry.logs && Object.values(entry.logs).some(day => 
+                            Object.entries(day).some(([ex, sets]) => ex === exercise)
+                        ))
+                        .map(entry => {
+                            const dayData = Object.values(entry.logs).find(day => 
+                                Object.entries(day).some(([ex, sets]) => ex === exercise)
+                            );
+                            const exerciseData = dayData[exercise];
+                            const maxWeight = Math.max(...Object.values(exerciseData)
+                                .map(set => parseFloat(set.weight) || 0));
+                            
+                            return {
+                                date: entry.date,
+                                weight: maxWeight
+                            };
+                        })
+                        .filter(entry => entry.weight > 0);
+
+                    setExerciseHistory({ exercise, data: history });
+                }
+            }
+
+            async function saveWorkoutData(newLogs) {
+                const { error } = await supabase
+                    .from('workout_logs')
+                    .upsert({ 
+                        date: selectedDate,
+                        logs: newLogs[selectedDate]
+                    });
+                
+                if (error) console.error('Error saving:', error);
+            }
+
+            async function loadPreviousWorkout() {
+                const { data, error } = await supabase
+                    .from('workout_logs')
+                    .select('*')
+                    .lt('date', selectedDate)
+                    .order('date', { ascending: false })
+                    .limit(1);
+
+                if (data?.[0]?.logs) {
+                    const previousLogs = data[0].logs;
+                    if (previousLogs[activeDay]) {
+                        setWorkoutLogs(prev => ({
+                            ...prev,
+                            [selectedDate]: {
+                                ...prev[selectedDate],
+                                [activeDay]: previousLogs[activeDay]
+                            }
+                        }));
+                        await saveWorkoutData({
+                            ...workoutLogs,
+                            [selectedDate]: {
+                                ...workoutLogs[selectedDate],
+                                [activeDay]: previousLogs[activeDay]
+                            }
+                        });
+                    }
+                }
+            }
+
+            const handleLogUpdate = async (exercise, setIndex, field, value) => {
+                const newLogs = {
+                    ...workoutLogs,
+                    [selectedDate]: {
+                        ...workoutLogs[selectedDate],
+                        [activeDay]: {
+                            ...workoutLogs[selectedDate]?.[activeDay],
+                            [exercise]: {
+                                ...workoutLogs[selectedDate]?.[activeDay]?.[exercise],
+                                [`set${setIndex + 1}`]: {
+                                    ...workoutLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`],
+                                    [field]: value
+                                }
+                            }
+                        }
+                    }
+                };
+                
+                setWorkoutLogs(newLogs);
+                await saveWorkoutData(newLogs);
+
+                // Check for PR when weight or reps are updated
+                if (field === 'weight' || field === 'reps') {
+                    const currentSet = newLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`];
+                    if (currentSet?.weight && currentSet?.reps) {
+                        await checkAndUpdatePR(exercise, parseFloat(currentSet.weight), parseInt(currentSet.reps));
+                    }
+                }
+            };
+
+            const getLoggedValue = (exercise, setIndex, field) => {
+                return workoutLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`]?.[field] || '';
+            };
+
+            const isPR = (exercise, weight, reps) => {
+                const currentPR = personalRecords[exercise];
+                weight = parseFloat(weight);
+                reps = parseInt(reps);
+                
+                if (!currentPR || !weight || !reps) return false;
+                return weight > currentPR.weight || (weight === currentPR.weight && reps >= currentPR.reps);
+            };
+
+            async function checkAndUpdatePR(exercise, weight, reps) {
+                if (!weight || !reps) return false;
+                const currentPR = personalRecords[exercise];
+                
+                if (!currentPR || weight > currentPR.weight || (weight === currentPR.weight && reps > currentPR.reps)) {
+                    const { error } = await supabase
+                        .from('personal_records')
+                        .upsert({
+                            exercise,
+                            weight,
+                            reps,
+                            date: selectedDate
+                        });
+
+                    if (!error) {
+                        await loadPersonalRecords();
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            const Calendar = () => {
+                const today = new Date();
+                const month = today.getMonth();
+                const year = today.getFullYear();
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                const getDayClass = (day) => {
+                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const workoutDay = workoutDates.find(wd => wd.date === dateStr);
+
+                    if (!workoutDay) return "bg-gray-50";
+                    return workoutDay.isRestDay ? "bg-green-100" : "bg-blue-100";
+                };
+
+                return (
+                    <div className="mt-4">
+                        <div className="grid grid-cols-7 gap-1">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                <div key={day} className="text-center text-sm font-semibold p-2">{day}</div>
+                            ))}
+                            {Array(firstDay).fill(null).map((_, i) => (
+                                <div key={`empty-${i}`} className="p-2"></div>
+                            ))}
+                            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
+                                <div
+                                    key={day}
+                                    className={`text-center p-2 rounded cursor-pointer ${getDayClass(day)} ${
+                                        selectedDate === `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                                            ? 'ring-2 ring-blue-500'
+                                            : ''
+                                    }`}
+                                    onClick={() => setSelectedDate(`${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)}
+                                >
+                                    {day}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-2 text-sm flex gap-4">
+                            <span className="flex items-center">
+                                <span className="w-3 h-3 bg-blue-100 rounded mr-1"></span>
+                                Workout Day
+                            </span>
+                            <span className="flex items-center">
+                                <span className="w-3 h-3 bg-green-100 rounded mr-1"></span>
+                                Rest Day
+                            </span>
+                        </div>
+                    </div>
+                );
+            };
 
             return (
                 <div className="max-w-4xl mx-auto p-4">
@@ -269,4 +494,17 @@
                                 {personalRecords[exercise.exercise] && (
                                     <div className="text-sm text-gray-600 mt-2">
                                         Current PR: {personalRecords[exercise.exercise].weight}kg × {personalRecords[exercise.exercise].reps} reps
-                                        ({new Date(personalRecords[exercise.exercise
+                                        ({new Date(personalRecords[exercise.exercise].date).toLocaleDateString()})
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<WorkoutTracker />, document.getElementById('root'));
+    </script>
+</body>
+</html>
