@@ -15,25 +15,23 @@
     <div id="root"></div>
     
     <script type="text/babel">
-        // Initialize Supabase - Replace with your project details
+        // Initialize Supabase
         const supabase = supabase.createClient(
             'https://tnngpxfcduzxjjaxpnys.supabase.com',
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubmdweGZjZHV6eGpqYXhwbnlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzUzMzU5NDIsImV4cCI6MjA1MDkxMTk0Mn0.XmCti5gFOjcDvlyMt6_r-_XwYZU-LgdeV2UX4gfB2PU'
         );
-
-        const workoutPlans = {
-            // ... [previous workout plans remain the same]
-        };
 
         function WorkoutTracker() {
             const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split('T')[0]);
             const [activeDay, setActiveDay] = React.useState('Day 1: Quad-Dominant Leg Day');
             const [stepCount, setStepCount] = React.useState('');
             const [workoutLogs, setWorkoutLogs] = React.useState({});
+            const [personalRecords, setPersonalRecords] = React.useState({});
 
-            // Load data when date changes
+            // Load workout data and PRs when date changes
             React.useEffect(() => {
                 loadWorkoutData();
+                loadPersonalRecords();
             }, [selectedDate]);
 
             async function loadWorkoutData() {
@@ -42,9 +40,22 @@
                     .select('*')
                     .eq('date', selectedDate)
                     .single();
-
                 if (data) {
                     setWorkoutLogs({ [selectedDate]: data.logs });
+                }
+            }
+
+            async function loadPersonalRecords() {
+                const { data, error } = await supabase
+                    .from('personal_records')
+                    .select('*');
+                
+                if (data) {
+                    const prsByExercise = {};
+                    data.forEach(pr => {
+                        prsByExercise[pr.exercise] = pr;
+                    });
+                    setPersonalRecords(prsByExercise);
                 }
             }
 
@@ -57,6 +68,32 @@
                     });
                 
                 if (error) console.error('Error saving:', error);
+            }
+
+            async function checkAndUpdatePR(exercise, weight, reps) {
+                const currentPR = personalRecords[exercise];
+                weight = parseFloat(weight);
+                reps = parseInt(reps);
+
+                if (!weight || !reps) return false;
+
+                // Check if this is a new PR
+                if (!currentPR || weight > currentPR.weight || (weight === currentPR.weight && reps >= currentPR.reps)) {
+                    const { error } = await supabase
+                        .from('personal_records')
+                        .upsert({
+                            exercise,
+                            weight,
+                            reps,
+                            date: selectedDate
+                        });
+
+                    if (!error) {
+                        await loadPersonalRecords();
+                        return true;
+                    }
+                }
+                return false;
             }
 
             const handleLogUpdate = (exercise, setIndex, field, value) => {
@@ -79,13 +116,98 @@
                 
                 setWorkoutLogs(newLogs);
                 saveWorkoutData(newLogs);
+
+                // Check for PR when weight or reps are updated
+                if (field === 'weight' || field === 'reps') {
+                    const currentSet = newLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`];
+                    if (currentSet?.weight && currentSet?.reps) {
+                        checkAndUpdatePR(exercise, currentSet.weight, currentSet.reps);
+                    }
+                }
             };
 
             const getLoggedValue = (exercise, setIndex, field) => {
                 return workoutLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`]?.[field] || '';
             };
 
-            // ... [rest of the component remains the same]
+            const isPR = (exercise, weight, reps) => {
+                const currentPR = personalRecords[exercise];
+                weight = parseFloat(weight);
+                reps = parseInt(reps);
+                
+                if (!currentPR || !weight || !reps) return false;
+                return weight > currentPR.weight || (weight === currentPR.weight && reps >= currentPR.reps);
+            };
+
+            return (
+                <div className="p-4 max-w-4xl mx-auto">
+                    <div className="mb-6 bg-white rounded-lg shadow p-4">
+                        <h1 className="text-2xl font-bold mb-4">My Workout Tracker</h1>
+                        
+                        <div className="flex items-center gap-4 mb-6">
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                                className="border rounded p-2"
+                            />
+                            <select 
+                                value={activeDay}
+                                onChange={(e) => setActiveDay(e.target.value)}
+                                className="border rounded p-2"
+                            >
+                                {Object.keys(workoutPlans).map(day => (
+                                    <option key={day} value={day}>{day}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {workoutPlans[activeDay].map((exercise) => (
+                            <div key={exercise.exercise} className="mb-6 border rounded-lg p-4">
+                                <h3 className="text-lg font-semibold mb-2">
+                                    {exercise.exercise} ({exercise.targetSets} sets × {exercise.targetReps})
+                                </h3>
+                                {Array.from({ length: exercise.targetSets }).map((_, setIndex) => (
+                                    <div key={setIndex} className="grid grid-cols-4 gap-2 mb-2">
+                                        <div className="flex items-center">Set {setIndex + 1}</div>
+                                        <input
+                                            type="number"
+                                            className="border rounded p-1"
+                                            value={getLoggedValue(exercise.exercise, setIndex, 'weight')}
+                                            onChange={(e) => handleLogUpdate(exercise.exercise, setIndex, 'weight', e.target.value)}
+                                            placeholder="kg"
+                                        />
+                                        <input
+                                            type="number"
+                                            className="border rounded p-1"
+                                            value={getLoggedValue(exercise.exercise, setIndex, 'reps')}
+                                            onChange={(e) => handleLogUpdate(exercise.exercise, setIndex, 'reps', e.target.value)}
+                                            placeholder="reps"
+                                        />
+                                        <div className="flex items-center">
+                                            {isPR(
+                                                exercise.exercise,
+                                                getLoggedValue(exercise.exercise, setIndex, 'weight'),
+                                                getLoggedValue(exercise.exercise, setIndex, 'reps')
+                                            ) && (
+                                                <span className="text-yellow-500 font-bold ml-2">
+                                                    <i className="fas fa-trophy"></i> PR!
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                                {personalRecords[exercise.exercise] && (
+                                    <div className="text-sm text-gray-600 mt-2">
+                                        Current PR: {personalRecords[exercise.exercise].weight}kg × {personalRecords[exercise.exercise].reps} reps
+                                        ({new Date(personalRecords[exercise.exercise].date).toLocaleDateString()})
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
         }
 
         ReactDOM.render(<WorkoutTracker />, document.getElementById('root'));
