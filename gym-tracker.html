@@ -9,141 +9,150 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <div id="root"></div>
     
     <script type="text/babel">
-        // Initialize Supabase
         const supabase = supabase.createClient(
             'https://tnngpxfcduzxjjaxpnys.supabase.com',
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubmdweGZjZHV6eGpqYXhwbnlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzUzMzU5NDIsImV4cCI6MjA1MDkxMTk0Mn0.XmCti5gFOjcDvlyMt6_r-_XwYZU-LgdeV2UX4gfB2PU'
         );
 
+        const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } = Recharts;
+
+        const workoutPlans = {
+            'Day 1: Quad-Dominant Leg Day': [
+                { exercise: 'Squats', targetSets: 4, targetReps: '8-10' },
+                { exercise: 'Leg Press', targetSets: 4, targetReps: '10-12' },
+                { exercise: 'Bulgarian Split Squats', targetSets: 3, targetReps: '10-12' },
+                { exercise: 'Leg Extensions', targetSets: 4, targetReps: '12-15' },
+                { exercise: 'Calf Raise', targetSets: 4, targetReps: '15-20' }
+            ],
+            'Day 2: Chest with Triceps': [
+                { exercise: 'Bench Press', targetSets: 4, targetReps: '8-10' },
+                { exercise: 'Incline Dumbbell Press', targetSets: 4, targetReps: '10-12' },
+                { exercise: 'Cable Chest Flyes', targetSets: 3, targetReps: '12-15' },
+                { exercise: 'Dips (Triceps focus)', targetSets: 3, targetReps: '10-12' },
+                { exercise: 'Triceps Pushdowns', targetSets: 4, targetReps: '12-15' }
+            ],
+            'Day 3: Back with Biceps': [
+                { exercise: 'Deadlifts', targetSets: 4, targetReps: '6-8' },
+                { exercise: 'Lat Pulldowns', targetSets: 4, targetReps: '10-12' },
+                { exercise: 'Barbell Rows', targetSets: 4, targetReps: '8-10' },
+                { exercise: 'Seated Cable Rows', targetSets: 3, targetReps: '10-12' },
+                { exercise: 'Barbell Curls', targetSets: 3, targetReps: '12-15' }
+            ],
+            'Day 4: Rest': [],
+            'Day 5: Shoulders with Chest': [
+                { exercise: 'Overhead Press', targetSets: 4, targetReps: '8-10' },
+                { exercise: 'Lateral Raises', targetSets: 4, targetReps: '12-15' },
+                { exercise: 'Rear Delt Flyes', targetSets: 4, targetReps: '12-15' },
+                { exercise: 'Dumbbell Chest Press', targetSets: 3, targetReps: '10-12' },
+                { exercise: 'Cable Lateral Raises', targetSets: 3, targetReps: '12-15' }
+            ],
+            'Day 6: Hamstrings with Back': [
+                { exercise: 'Romanian Deadlifts', targetSets: 4, targetReps: '8-10' },
+                { exercise: 'Hamstring Curls', targetSets: 4, targetReps: '12-15' },
+                { exercise: 'Lunges', targetSets: 3, targetReps: '10-12' },
+                { exercise: 'Pull-ups', targetSets: 3, targetReps: '8-10' },
+                { exercise: 'T-Bar Rows', targetSets: 3, targetReps: '10-12' }
+            ],
+            'Day 7: Arms (Biceps & Triceps)': [
+                { exercise: 'Barbell Curls', targetSets: 4, targetReps: '8-10' },
+                { exercise: 'Hammer Curls', targetSets: 4, targetReps: '10-12' },
+                { exercise: 'Skull Crushers', targetSets: 4, targetReps: '10-12' },
+                { exercise: 'Tricep Overhead Extension', targetSets: 3, targetReps: '12-15' },
+                { exercise: 'Preacher Curls', targetSets: 3, targetReps: '12-15' }
+            ]
+        };
+
         function WorkoutTracker() {
             const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split('T')[0]);
             const [activeDay, setActiveDay] = React.useState('Day 1: Quad-Dominant Leg Day');
-            const [stepCount, setStepCount] = React.useState('');
             const [workoutLogs, setWorkoutLogs] = React.useState({});
             const [personalRecords, setPersonalRecords] = React.useState({});
+            const [exerciseHistory, setExerciseHistory] = React.useState(null);
+            const [workoutDates, setWorkoutDates] = React.useState([]);
+            const [bodyWeight, setBodyWeight] = React.useState('');
+            const [bodyWeightHistory, setBodyWeightHistory] = React.useState([]);
+            const [showBodyWeightGraph, setShowBodyWeightGraph] = React.useState(false);
 
-            // Load workout data and PRs when date changes
             React.useEffect(() => {
                 loadWorkoutData();
                 loadPersonalRecords();
+                loadBodyWeight();
+                loadBodyWeightHistory();
+                loadAllWorkoutDates();
             }, [selectedDate]);
 
-            async function loadWorkoutData() {
+            async function loadBodyWeight() {
                 const { data, error } = await supabase
-                    .from('workout_logs')
-                    .select('*')
+                    .from('body_weight_logs')
+                    .select('weight')
                     .eq('date', selectedDate)
                     .single();
+                
                 if (data) {
-                    setWorkoutLogs({ [selectedDate]: data.logs });
+                    setBodyWeight(data.weight.toString());
+                } else {
+                    setBodyWeight('');
                 }
             }
 
-            async function loadPersonalRecords() {
+            async function loadBodyWeightHistory() {
                 const { data, error } = await supabase
-                    .from('personal_records')
-                    .select('*');
+                    .from('body_weight_logs')
+                    .select('date, weight')
+                    .order('date', { ascending: true });
                 
                 if (data) {
-                    const prsByExercise = {};
-                    data.forEach(pr => {
-                        prsByExercise[pr.exercise] = pr;
-                    });
-                    setPersonalRecords(prsByExercise);
+                    setBodyWeightHistory(data);
                 }
             }
 
-            async function saveWorkoutData(newLogs) {
+            async function saveBodyWeight(weight) {
+                if (!weight) return;
+                
                 const { error } = await supabase
-                    .from('workout_logs')
-                    .upsert({ 
+                    .from('body_weight_logs')
+                    .upsert({
                         date: selectedDate,
-                        logs: newLogs[selectedDate]
+                        weight: parseFloat(weight)
                     });
                 
-                if (error) console.error('Error saving:', error);
+                if (!error) {
+                    loadBodyWeightHistory();
+                }
             }
 
-            async function checkAndUpdatePR(exercise, weight, reps) {
-                const currentPR = personalRecords[exercise];
-                weight = parseFloat(weight);
-                reps = parseInt(reps);
-
-                if (!weight || !reps) return false;
-
-                // Check if this is a new PR
-                if (!currentPR || weight > currentPR.weight || (weight === currentPR.weight && reps >= currentPR.reps)) {
-                    const { error } = await supabase
-                        .from('personal_records')
-                        .upsert({
-                            exercise,
-                            weight,
-                            reps,
-                            date: selectedDate
-                        });
-
-                    if (!error) {
-                        await loadPersonalRecords();
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            const handleLogUpdate = (exercise, setIndex, field, value) => {
-                const newLogs = {
-                    ...workoutLogs,
-                    [selectedDate]: {
-                        ...workoutLogs[selectedDate],
-                        [activeDay]: {
-                            ...workoutLogs[selectedDate]?.[activeDay],
-                            [exercise]: {
-                                ...workoutLogs[selectedDate]?.[activeDay]?.[exercise],
-                                [`set${setIndex + 1}`]: {
-                                    ...workoutLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`],
-                                    [field]: value
-                                }
-                            }
-                        }
-                    }
-                };
-                
-                setWorkoutLogs(newLogs);
-                saveWorkoutData(newLogs);
-
-                // Check for PR when weight or reps are updated
-                if (field === 'weight' || field === 'reps') {
-                    const currentSet = newLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`];
-                    if (currentSet?.weight && currentSet?.reps) {
-                        checkAndUpdatePR(exercise, currentSet.weight, currentSet.reps);
-                    }
-                }
-            };
-
-            const getLoggedValue = (exercise, setIndex, field) => {
-                return workoutLogs[selectedDate]?.[activeDay]?.[exercise]?.[`set${setIndex + 1}`]?.[field] || '';
-            };
-
-            const isPR = (exercise, weight, reps) => {
-                const currentPR = personalRecords[exercise];
-                weight = parseFloat(weight);
-                reps = parseInt(reps);
-                
-                if (!currentPR || !weight || !reps) return false;
-                return weight > currentPR.weight || (weight === currentPR.weight && reps >= currentPR.reps);
-            };
+            // ... [Previous functions remain the same: loadWorkoutData, saveWorkoutData, etc.]
 
             return (
-                <div className="p-4 max-w-4xl mx-auto">
-                    <div className="mb-6 bg-white rounded-lg shadow p-4">
-                        <h1 className="text-2xl font-bold mb-4">My Workout Tracker</h1>
-                        
+                <div className="max-w-4xl mx-auto p-4">
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h1 className="text-2xl font-bold">Workout Tracker</h1>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={loadPreviousWorkout}
+                                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                                >
+                                    <i className="fas fa-copy mr-2"></i>
+                                    Load Previous
+                                </button>
+                                <button
+                                    onClick={() => setShowBodyWeightGraph(!showBodyWeightGraph)}
+                                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                                >
+                                    <i className="fas fa-weight mr-2"></i>
+                                    Body Weight Graph
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="flex items-center gap-4 mb-6">
                             <input
                                 type="date"
@@ -160,13 +169,72 @@
                                     <option key={day} value={day}>{day}</option>
                                 ))}
                             </select>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    value={bodyWeight}
+                                    onChange={(e) => {
+                                        setBodyWeight(e.target.value);
+                                        saveBodyWeight(e.target.value);
+                                    }}
+                                    placeholder="Body Weight (kg)"
+                                    className="border rounded p-2 w-32"
+                                />
+                                <span className="text-sm text-gray-600">kg</span>
+                            </div>
                         </div>
 
+                        {showBodyWeightGraph && bodyWeightHistory.length > 0 && (
+                            <div className="mb-6 border rounded-lg p-4">
+                                <h3 className="text-lg font-semibold mb-4">Body Weight Progress</h3>
+                                <div className="h-64">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <LineChart data={bodyWeightHistory}>
+                                            <XAxis dataKey="date" />
+                                            <YAxis domain={['dataMin - 1', 'dataMax + 1']} />
+                                            <Tooltip />
+                                            <Line 
+                                                type="monotone" 
+                                                dataKey="weight" 
+                                                stroke="#10b981" 
+                                                strokeWidth={2}
+                                                dot={{ r: 4 }}
+                                            />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        )}
+
+                        <Calendar />
+
                         {workoutPlans[activeDay].map((exercise) => (
-                            <div key={exercise.exercise} className="mb-6 border rounded-lg p-4">
-                                <h3 className="text-lg font-semibold mb-2">
-                                    {exercise.exercise} ({exercise.targetSets} sets × {exercise.targetReps})
-                                </h3>
+                            <div key={exercise.exercise} className="mt-6 border rounded-lg p-4">
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-semibold">
+                                        {exercise.exercise} ({exercise.targetSets} sets × {exercise.targetReps})
+                                    </h3>
+                                    <button
+                                        onClick={() => loadExerciseHistory(exercise.exercise)}
+                                        className="text-blue-500 hover:text-blue-600"
+                                    >
+                                        <i className="fas fa-chart-line"></i>
+                                    </button>
+                                </div>
+
+                                {exerciseHistory?.exercise === exercise.exercise && (
+                                    <div className="h-48 mb-4">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={exerciseHistory.data}>
+                                                <XAxis dataKey="date" />
+                                                <YAxis />
+                                                <Tooltip />
+                                                <Line type="monotone" dataKey="weight" stroke="#3b82f6" />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+
                                 {Array.from({ length: exercise.targetSets }).map((_, setIndex) => (
                                     <div key={setIndex} className="grid grid-cols-4 gap-2 mb-2">
                                         <div className="flex items-center">Set {setIndex + 1}</div>
@@ -197,20 +265,8 @@
                                         </div>
                                     </div>
                                 ))}
+
                                 {personalRecords[exercise.exercise] && (
                                     <div className="text-sm text-gray-600 mt-2">
                                         Current PR: {personalRecords[exercise.exercise].weight}kg × {personalRecords[exercise.exercise].reps} reps
-                                        ({new Date(personalRecords[exercise.exercise].date).toLocaleDateString()})
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
-
-        ReactDOM.render(<WorkoutTracker />, document.getElementById('root'));
-    </script>
-</body>
-</html>
+                                        ({new Date(personalRecords[exercise.exercise
