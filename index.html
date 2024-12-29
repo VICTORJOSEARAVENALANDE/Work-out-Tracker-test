@@ -118,7 +118,7 @@
                     window.console.log('Attempting to load workout data for date:', selectedDate);
                     const { data, error } = await supabase
                         .from('workout_logs')
-                        .select('*')
+                        .select('date,logs')
                         .eq('date', selectedDate)
                         .single();
 
@@ -129,7 +129,7 @@
                 
                 window.console.log('Workout data received:', data);
                 if(data && data.logs) {
-                    const workoutData = data.logs.logs || data.logs;
+                    const workoutData = data.logs;
                     setWorkoutLogs({ [selectedDate]: workoutData });
                     window.console.log('Processed workout data:', { [selectedDate]: workoutData });
                 }
